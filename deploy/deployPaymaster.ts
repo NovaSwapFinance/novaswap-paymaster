@@ -10,6 +10,6 @@ export default async function () {
       kind: 'uups',
       unsafeAllow: ['constructor'],
     },
-    [process.env.ROUTER, process.env.GASFACTOR],
+    [process.env.QUOTER, process.env.GASFACTOR],
   );
 }

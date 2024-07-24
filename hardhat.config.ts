@@ -7,6 +7,9 @@ import '@matterlabs/hardhat-zksync-verify';
 import '@matterlabs/hardhat-zksync-upgradable';
 import 'hardhat-abi-exporter';
 import dotenv from 'dotenv';
+import { ProxyAgent, setGlobalDispatcher } from 'undici';
+const proxyAgent = new ProxyAgent('http://127.0.0.1:7890');
+setGlobalDispatcher(proxyAgent);
 // Load env file
 dotenv.config();
 

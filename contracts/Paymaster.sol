@@ -17,20 +17,16 @@ import "./interfaces/IQuoter.sol";
 
 contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
-
-    address public router;
-    address public long;
-
+    address public quoter;
     uint256 public gasFactor;
     uint256 constant MAX_FACTOR = 1e10;
-
     bytes private hashKey;
-
     bool public allowTokenSwitch;
-
-    mapping(address => bool) public allowedTokenList;
-
+    mapping(address => uint24) public allowedTokenList;
     address public WETH;
+
+    event Message(address indexed token, uint256 indexed priceForPayingFees, uint256 indexed requiredETH);
+    event Allowance(uint256 indexed allowance);
 
     modifier onlyBootloader() {
         require(msg.sender == BOOTLOADER_FORMAL_ADDRESS, "Only bootloader can call this method");
@@ -42,14 +38,14 @@ contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgrade
         _disableInitializers();
     }
 
-    function initialize(address _router, uint256 _gasFactor) public initializer {
+    function initialize(address _quoter, uint256 _gasFactor) public initializer {
         __UUPSUpgradeable_init_unchained();
         __Ownable_init_unchained();
-        require(_router != address(0), "invalid router");
-        router = _router;
-        require(_gasFactor <= MAX_FACTOR, "invalid gasFactor");
+        require(_quoter != address(0), "invalid router");
+        quoter = _quoter;
+        require(_gasFactor <= MAX_FACTOR && _gasFactor > 0, "invalid gasFactor");
         gasFactor = _gasFactor;
-        WETH = address(0x8280a4e7D5B3B658ec4580d3Bc30f5e50454F169);
+        WETH = 0x8280a4e7D5B3B658ec4580d3Bc30f5e50454F169;
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
@@ -77,7 +73,7 @@ contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgrade
 
             // Verify if token is the correct one
             if (allowTokenSwitch) {
-                require(allowedTokenList[token], "Invalid token for paying fee");
+                require(allowedTokenList[token] != 0, "Invalid token for paying fee");
             }
 
             // We verify that the user has provided enough allowance
@@ -88,25 +84,22 @@ contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgrade
             uint256 requiredETH = _transaction.gasLimit * _transaction.maxFeePerGas;
             uint256 priceForPayingFees = getPriceForPayingFees(requiredETH, token);
 
-            require(providedAllowance >= priceForPayingFees, "Min allowance too low");
+            require(providedAllowance >= priceForPayingFees, "Min allowance too low"); 
+            emit Message(token, priceForPayingFees, IERC20(token).balanceOf(userAddress));
+            emit Allowance(providedAllowance);
 
-            require(_transaction.paymasterInput.length >= 164, "Invalid paymasterInput length");
+            // require(IERC20(token).balanceOf(userAddress) >= priceForPayingFees, "user balance too low");
 
-            bytes32 hashCheck = bytes32(_transaction.paymasterInput[132:164]);
-            bytes32 hashGen = keccak256(abi.encodePacked(hashKey, _transaction.nonce));
-
-            if (hashCheck != hashGen) {
-                try IERC20(token).transferFrom(userAddress, address(this), priceForPayingFees) {} catch (
-                    bytes memory revertReason
-                ) {
-                    // If the revert reason is empty or represented by just a function selector,
-                    // we replace the error with a more user-friendly message
-                    if (revertReason.length <= 4) {
-                        revert("Failed to transferFrom from users' account");
-                    } else {
-                        assembly {
-                            revert(add(0x20, revertReason), mload(revertReason))
-                        }
+            try IERC20(token).transferFrom(userAddress, address(this), priceForPayingFees) {} catch (
+                bytes memory revertReason
+            ) {
+                // If the revert reason is empty or represented by just a function selector,
+                // we replace the error with a more user-friendly message
+                if (revertReason.length <= 4) {
+                    revert("Failed to transferFrom from users' account");
+                } else {
+                    assembly {
+                        revert(add(0x20, revertReason), mload(revertReason))
                     }
                 }
             }
@@ -130,13 +123,13 @@ contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgrade
 
     receive() external payable {}
 
-    function getPriceForPayingFees(uint256 _requiredETH, address _allowedToken) internal returns (uint256 amountOut) {
-        uint24 fee = 3000;
+    function getPriceForPayingFees(uint256 _requiredETH, address _allowedToken) public returns (uint256 amountOut) {
+        uint24 fee = allowedTokenList[_allowedToken];
         bytes memory bytesPath = abi.encodePacked(WETH, fee, address(_allowedToken));
 
         uint256 usedETH = (_requiredETH * gasFactor) / MAX_FACTOR;
 
-        (amountOut, , , ) = IQuoter(router).quoteExactInput(bytesPath, usedETH);
+        (amountOut, , , ) = IQuoter(quoter).quoteExactInput(bytesPath, usedETH);
     }
 
     function withdrawFee(address _token, uint256 _value) external onlyOwner {
@@ -149,9 +142,9 @@ contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgrade
         }
     }
 
-    function setRouter(address _router) external onlyOwner {
-        require(_router != address(0), "setRouter: invalid router");
-        router = _router;
+    function setQuoter(address _quoter) external onlyOwner {
+        require(_quoter != address(0), "setQuoter: invalid quoter");
+        quoter = _quoter;
     }
 
     function setGasFactor(uint256 _gasFactor) external onlyOwner {
@@ -159,17 +152,10 @@ contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgrade
         gasFactor = _gasFactor;
     }
 
-    function setAllowedTokenList(address _allowedToken, bool _isAllowed) external onlyOwner {
+    function setAllowedTokenList(address _allowedToken, uint24 _fee) external onlyOwner {
         require(_allowedToken != address(0), "setAllowedTokenList: invalid address");
-
-        bool isAllowed = allowedTokenList[_allowedToken];
-        if (isAllowed != _isAllowed) {
-            allowedTokenList[_allowedToken] = _isAllowed;
-        }
-    }
-
-    function setHashKey(bytes calldata value) external onlyOwner {
-        hashKey = value;
+        require(_fee > 0, "setAllowedTokenList: invalid fee");
+        allowedTokenList[_allowedToken] = _fee;
     }
 
     function setAllowTokenSwitch(bool _switch) external onlyOwner {
