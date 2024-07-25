@@ -25,9 +25,6 @@ contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgrade
     mapping(address => uint24) public allowedTokenList;
     address public WETH;
 
-    event Message(address indexed token, uint256 indexed priceForPayingFees, uint256 indexed requiredETH);
-    event Allowance(uint256 indexed allowance);
-
     modifier onlyBootloader() {
         require(msg.sender == BOOTLOADER_FORMAL_ADDRESS, "Only bootloader can call this method");
         // Continue execution if called from the bootloader.
@@ -85,10 +82,6 @@ contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgrade
             uint256 priceForPayingFees = getPriceForPayingFees(requiredETH, token);
 
             require(providedAllowance >= priceForPayingFees, "Min allowance too low"); 
-            emit Message(token, priceForPayingFees, IERC20(token).balanceOf(userAddress));
-            emit Allowance(providedAllowance);
-
-            // require(IERC20(token).balanceOf(userAddress) >= priceForPayingFees, "user balance too low");
 
             try IERC20(token).transferFrom(userAddress, address(this), priceForPayingFees) {} catch (
                 bytes memory revertReason
@@ -127,7 +120,7 @@ contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgrade
         uint24 fee = allowedTokenList[_allowedToken];
         bytes memory bytesPath = abi.encodePacked(WETH, fee, address(_allowedToken));
 
-        uint256 usedETH = (_requiredETH * gasFactor) / MAX_FACTOR;
+        uint256 usedETH = _requiredETH;
 
         (amountOut, , , ) = IQuoter(quoter).quoteExactInput(bytesPath, usedETH);
     }
