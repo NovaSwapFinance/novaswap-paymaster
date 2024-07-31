@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.23;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 
 import {IPaymaster, ExecutionResult, PAYMASTER_VALIDATION_SUCCESS_MAGIC} from "@matterlabs/zksync-contracts/l2/system-contracts/interfaces/IPaymaster.sol";
 import {IPaymasterFlow} from "@matterlabs/zksync-contracts/l2/system-contracts/interfaces/IPaymasterFlow.sol";
@@ -11,12 +11,12 @@ import "@matterlabs/zksync-contracts/l2/system-contracts/Constants.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
 import "./interfaces/IQuoter.sol";
 
 contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgradeable {
-    using SafeERC20 for IERC20;
+    using SafeERC20Upgradeable for IERC20Upgradeable;
     address public quoter;
     uint256 public gasFactor;
     uint256 constant MAX_FACTOR = 1e10;
@@ -74,16 +74,16 @@ contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgrade
             }
 
             // We verify that the user has provided enough allowance
-            uint256 providedAllowance = IERC20(token).allowance(userAddress, address(this));
+            uint256 providedAllowance = IERC20Upgradeable(token).allowance(userAddress, address(this));
 
             // Note, that while the minimal amount of ETH needed is tx.gasPrice * tx.gasLimit,
             // neither paymaster nor account are allowed to access this context variable.
             uint256 requiredETH = _transaction.gasLimit * _transaction.maxFeePerGas;
             uint256 priceForPayingFees = getPriceForPayingFees(requiredETH, token);
 
-            require(providedAllowance >= priceForPayingFees, "Min allowance too low"); 
+            require(providedAllowance >= priceForPayingFees, "Min allowance too low");
 
-            try IERC20(token).transferFrom(userAddress, address(this), priceForPayingFees) {} catch (
+            try IERC20Upgradeable(token).transferFrom(userAddress, address(this), priceForPayingFees) {} catch (
                 bytes memory revertReason
             ) {
                 // If the revert reason is empty or represented by just a function selector,
@@ -131,7 +131,7 @@ contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgrade
             (bool success, ) = payable(msg.sender).call{value: _value}("");
             require(success, "_safeTransferETH: failed");
         } else {
-            IERC20(_token).safeTransfer(msg.sender, _value);
+            IERC20Upgradeable(_token).safeTransfer(msg.sender, _value);
         }
     }
 
