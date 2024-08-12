@@ -10,7 +10,10 @@ This project was scaffolded with [zksync-cli](https://github.com/matter-labs/zks
 - `hardhat.config.ts`: Configuration settings.
 
 ## How to Use
-
+### Install
+```
+yarn
+```
 - `npm run compile`: Compiles contracts.
 - `npm run deploy`: Deploys using script `/deploy/deploy.ts`.
 - `npm run interact`: Interacts with the deployed contract using `/deploy/interact.ts`.
