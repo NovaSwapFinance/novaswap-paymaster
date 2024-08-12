@@ -20,8 +20,6 @@ contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgrade
     address public quoter;
     uint256 public gasFactor;
     uint256 constant MAX_FACTOR = 1e10;
-    bytes private hashKey;
-    bool public allowTokenSwitch;
     mapping(address => uint24) public allowedTokenList;
     address public WETH;
 
@@ -68,11 +66,6 @@ contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgrade
 
             address userAddress = address(uint160(_transaction.from));
 
-            // Verify if token is the correct one
-            if (allowTokenSwitch) {
-                require(allowedTokenList[token] != 0, "Invalid token for paying fee");
-            }
-
             // We verify that the user has provided enough allowance
             uint256 providedAllowance = IERC20Upgradeable(token).allowance(userAddress, address(this));
 
@@ -117,6 +110,9 @@ contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgrade
     receive() external payable {}
 
     function getPriceForPayingFees(uint256 _requiredETH, address _allowedToken) public returns (uint256 amountOut) {
+        // Verify if token is the correct one
+        require(allowedTokenList[_allowedToken] != 0, "Invalid token for paying fee");
+
         uint24 fee = allowedTokenList[_allowedToken];
         bytes memory bytesPath = abi.encodePacked(WETH, fee, address(_allowedToken));
 
@@ -149,9 +145,5 @@ contract Paymaster is Initializable, IPaymaster, OwnableUpgradeable, UUPSUpgrade
         require(_allowedToken != address(0), "setAllowedTokenList: invalid address");
         require(_fee > 0, "setAllowedTokenList: invalid fee");
         allowedTokenList[_allowedToken] = _fee;
-    }
-
-    function setAllowTokenSwitch(bool _switch) external onlyOwner {
-        allowTokenSwitch = _switch;
     }
 }
